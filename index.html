@@ -74,9 +74,17 @@
             gap: 5px;
             border-right: 4px solid #007bff;
         }
-        .update-time {
-            color: #27ae60;
-            font-weight: bold;
+        .group-select {
+            width: 100%;
+            padding: 12px 20px;
+            margin: 10px 0;
+            border: 2px solid #007bff;
+            border-radius: 25px;
+            font-size: 16px;
+            font-family: inherit;
+            background-color: white;
+            outline: none;
+            cursor: pointer;
         }
         .search-box {
             width: 100%;
@@ -133,7 +141,6 @@
             border-radius: 5px;
             font-size: 14px;
         }
-        /* تنسيق زر إظهار السعر المخفي */
         .show-price-btn {
             background-color: #7f8c8d;
             color: white;
@@ -167,21 +174,28 @@
 
         <div class="meta-info">
             <div id="liveClock">📅 التاريخ: --/--/---- | ⏰ الوقت: --:--:--</div>
-            <div id="lastUpdateTime" class="update-time">🔄 جاري التحقق من آخر تحديث للأسعار...</div>
+            <div id="lastUpdateTime" class="update-time">🔄 جاري الاتصال بالنظام...</div>
         </div>
 
-        <input type="text" id="searchInput" class="search-box" placeholder="🔍 ابحث باسم الصنف...">
+        <!-- قائمة اختيار المجموعة الديناميكية -->
+        <select id="groupSelect" class="group-select">
+            <option value="">📂 جاري تحميل المجموعات...</option>
+        </select>
+
+        <!-- صندوق البحث المستمر -->
+        <input type="text" id="searchInput" class="search-box" placeholder="🔍 ابحث باسم الصنف داخل المجموعة المختارة..." disabled>
         
-        <div id="statusMessage" class="status">🚧 جاري تحميل البيانات من النظام...</div>
+        <div id="statusMessage" class="status">🚧 يرجى اختيار مجموعة لعرض الأسعار...</div>
         <div id="resultsContainer"></div>
     </div>
 
     <script>
         const BASE_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSSn5uA56Qo_nydx3V_pK7IgZKR22Hx_zjilNdpBNbnqelTWsqnjmMt4lE19HtnZbsVsLnUqsLZ94zU/pub';
-        const URL_PAGE_1 = `${BASE_URL}?gid=0&output=csv`;
-        const URL_PAGE_2 = `${BASE_URL}?gid=980123048&output=csv`;
         
-        let products = [];
+        // تم توجيه الرابط لصفحة الفهرس الخاصة بك برقم gid المرفق
+        const INDEX_URL = `${BASE_URL}?gid=1189181007&output=csv`;
+        
+        let currentProducts = [];
 
         function setupSmartGreeting() {
             const hour = new Date().getHours();
@@ -227,48 +241,65 @@
             const options = { year: 'numeric', month: '2-digit', day: '2-digit' };
             const dateStr = now.toLocaleDateString('ar-LY', options);
             const timeStr = now.toLocaleTimeString('ar-LY', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            
             document.getElementById('liveClock').innerHTML = `📅 التاريخ: ${dateStr} | ⏰ الوقت: ${timeStr}`;
         }
         setInterval(updateClock, 1000);
         updateClock();
         setupSmartGreeting();
 
-        async function loadPrices() {
+        // تحميل الفهرس أولاً لإنشاء القائمة المنسدلة للمجموعات
+        async function loadIndex() {
             try {
-                let products1 = [];
-                try {
-                    const response1 = await fetch(URL_PAGE_1);
-                    const data1 = await response1.text();
-                    products1 = parseCSV(data1);
-                } catch(e) { console.error("خطأ في جلب ورقة 0", e); }
-
-                let products2 = [];
-                try {
-                    const response2 = await fetch(URL_PAGE_2);
-                    const data2 = await response2.text();
-                    products2 = parseCSV(data2);
-                } catch(e) { console.error("خطأ في جلب ورقة 980123048", e); }
-
-                const combined = [...products1, ...products2];
+                const response = await fetch(INDEX_URL);
+                const data = await response.text();
+                const groups = parseCSV(data);
                 
-                const uniqueProducts = [];
-                const seenNames = new Set();
+                const groupSelect = document.getElementById('groupSelect');
+                groupSelect.innerHTML = '<option value="">📁 اختر المجموعة المراد عرضها...</option>';
                 
-                for (const item of combined) {
-                    if (item.name && !seenNames.has(item.name)) {
-                        seenNames.add(item.name);
-                        uniqueProducts.push(item);
+                groups.forEach(group => {
+                    if(group.groupname && group.gid !== undefined) {
+                        const option = document.createElement('option');
+                        option.value = group.gid;
+                        option.textContent = group.groupname;
+                        groupSelect.appendChild(option);
                     }
-                }
+                });
                 
-                products = uniqueProducts;
-                document.getElementById('statusMessage').style.display = 'none';
-                document.getElementById('lastUpdateTime').innerHTML = `⏱️ تم تحديث الأسعار فوراً عند فتح الصفحة`;
-
+                document.getElementById('lastUpdateTime').innerHTML = `✅ تم تحميل قنوات النظام بنجاح`;
             } catch (error) {
-                console.error("خطأ عام في جلب البيانات:", error);
-                document.getElementById('statusMessage').innerText = "❌ حدث خطأ أثناء تحميل الأسعار.";
+                console.error("خطأ في جلب الفهرس:", error);
+                document.getElementById('statusMessage').innerText = "❌ حدث خطأ أثناء الاتصال بالفهرس المرجعي.";
+            }
+        }
+
+        // جلب أسعار المجموعة المحددة بناء على اختيار المستخدم
+        async function loadGroupPrices(gid) {
+            const statusMessage = document.getElementById('statusMessage');
+            const searchInput = document.getElementById('searchInput');
+            const resultsContainer = document.getElementById('resultsContainer');
+            
+            statusMessage.style.display = 'block';
+            statusMessage.innerText = "⏳ جاري تحميل أصناف المجموعة المختارة...";
+            resultsContainer.innerHTML = '';
+            searchInput.value = '';
+            searchInput.disabled = true;
+
+            try {
+                const groupUrl = `${BASE_URL}?gid=${gid}&output=csv`;
+                const response = await fetch(groupUrl);
+                const data = await response.text();
+                
+                currentProducts = parseCSV(data);
+                
+                statusMessage.style.display = 'none';
+                searchInput.disabled = false;
+                
+                displayResults(currentProducts);
+                
+            } catch (error) {
+                console.error("خطأ في جلب بيانات المجموعة:", error);
+                statusMessage.innerText = "❌ تعذر تحميل أصناف هذه المجموعة.";
             }
         }
 
@@ -292,32 +323,42 @@
             }).filter(item => item !== null);
         }
 
+        document.getElementById('groupSelect').addEventListener('change', (e) => {
+            const selectedGid = e.target.value;
+            if (selectedGid !== "") {
+                loadGroupPrices(selectedGid);
+            } else {
+                document.getElementById('searchInput').disabled = true;
+                document.getElementById('statusMessage').style.display = 'block';
+                document.getElementById('statusMessage').innerText = "🚧 يرجى اختيار مجموعة لعرض الأسعار...";
+                document.getElementById('resultsContainer').innerHTML = '';
+            }
+        });
+
         const searchInput = document.getElementById('searchInput');
         const resultsContainer = document.getElementById('resultsContainer');
 
         searchInput.addEventListener('input', (e) => {
             const query = e.target.value.toLowerCase().trim();
             if (query === '') {
-                resultsContainer.innerHTML = '';
+                displayResults(currentProducts);
                 return;
             }
 
-            const filtered = products.filter(product => {
+            const filtered = currentProducts.filter(product => {
                 return product.name && product.name.toLowerCase().includes(query);
             });
 
             displayResults(filtered);
         });
 
-        // دالة مخصصة لتبديل الحالة وإظهار السعر المخفي عند النقر
         window.revealPrice = function(button, actualPrice) {
-            const cell = button.parentElement;
-            cell.innerHTML = `<span class="badge-min">${actualPrice}</span>`;
+            button.parentElement.innerHTML = `<span class="badge-min">${actualPrice}</span>`;
         };
 
         function displayResults(results) {
             if (results.length === 0) {
-                resultsContainer.innerHTML = '<p class="no-result">عذراً، الصنف غير موجود</p>';
+                resultsContainer.innerHTML = '<p class="no-result">عذراً، لا توجد نتائج مطابقة لبحثك</p>';
                 return;
             }
 
@@ -330,6 +371,7 @@
                             </tr>`;
             
             results.forEach(product => {
+                if (!product.name) return;
                 const minPriceValue = product.minprice || '-';
                 
                 html += `<tr>
@@ -346,7 +388,7 @@
             resultsContainer.innerHTML = html;
         }
 
-        loadPrices();
+        loadIndex();
     </script>
 </body>
 </html>
