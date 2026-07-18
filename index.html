@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>شركة فضاء التقنية - قائمة الأسعار</title>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --bg-color: #f8fafc;
+            --text-color: #1e293b;
+            --card-bg: #ffffff;
+        }
+        
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+
+        .search-box {
+            width: 100%;
+            padding: 12px 20px;
+            font-size: 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            box-sizing: border-box;
+            margin-bottom: 20px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .search-box:focus {
+            border-color: var(--primary-color);
+        }
+
+        .loading, .error-msg {
+            text-align: center;
+            padding: 20px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .error-msg { color: #dc2626; }
+
+        .items-list {
+            display: grid;
+            gap: 15px;
+        }
+
+        .item-card {
+            background: var(--card-bg);
+            padding: 15px 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-right: 5px solid var(--primary-color);
+        }
+
+        .item-name {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .item-price {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .price-details {
+            text-align: left;
+        }
+
+        .min-price {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>قائمة أسعار المواد</h1>
+        <p>شركة فضاء التقنية</p>
+    </header>
+
+    <input type="text" id="search" class="search-box" placeholder="ابحث عن صنف...">
+
+    <div id="loading" class="loading">جاري تحميل الأصناف والأسعار...</div>
+    <div id="error" class="error-msg" style="display: none;">عذراً، تعذر تحميل البيانات. تأكد من إعدادات نشر الـ Sheet.</div>
+    
+    <div id="itemsContainer" class="items-list"></div>
+</div>
+
+<script>
+    // الرابط المباشر والجاهز الخاص بك
+    const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSSn5uA56Qo_nydx3V_pK7IgZKR22Hx_zjilNdpBNbnqelTWsqnjmMt4lE19HtnZbsVsLnUqsLZ94zU/pub?output=csv';
+
+    let allItems = [];
+
+    // دالة لتحويل نص CSV إلى مصفوفة كائنات
+    function parseCSV(text) {
+        const lines = text.split('\n');
+        const result = [];
+        
+        // يتجاوز السطر الأول (العناوين) ويبدأ بقراءة البيانات مباشرة
+        for (let i = 1; i < lines.length; i++) {
+            if (!lines[i].trim()) continue;
+            
+            // تقسيم السطر بناءً على الفواصل (CSV)
+            const cells = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+            
+            if (cells.length >= 2) {
+                result.push({
+                    name: cells[0].replace(/"/g, '').trim(),
+                    price: cells[1] ? cells[1].trim() : 'غير محدد',
+                    minPrice: cells[2] ? cells[2].trim() : ''
+                });
+            }
+        }
+        return result;
+    }
+
+    // دالة عرض العناصر في الصفحة
+    function displayItems(items) {
+        const container = document.getElementById('itemsContainer');
+        container.innerHTML = '';
+        
+        if (items.length === 0) {
+            container.innerHTML = '<div class="loading">لا توجد أصناف مطابقة للبحث.</div>';
+            return;
+        }
+
+        items.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'item-card';
+            
+            // إذا كان هناك حد أدنى للسعر يظهر بخط صغير في الأسفل
+            let minPriceHTML = item.minPrice ? `<div class="min-price">أقل سعر: ${item.minPrice} د.ل</div>` : '';
+            
+            card.innerHTML = `
+                <div class="item-name">${item.name}</div>
+                <div class="price-details">
+                    <div class="item-price">${item.price} د.ل</div>
+                    ${minPriceHTML}
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    // جلب البيانات من الرابط مباشرة
+    fetch(SHEET_CSV_URL)
+        .then(response => {
+            if (!response.ok) throw new Error('Network error');
+            return response.text();
+        })
+        .then(data => {
+            document.getElementById('loading').style.display = 'none';
+            allItems = parseCSV(data);
+            displayItems(allItems);
+        })
+        .catch(error => {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error').style.display = 'block';
+            console.error('Error fetching data:', error);
+        });
+
+    // ميزة البحث السريع الفوري
+    document.getElementById('search').addEventListener('input', (e) => {
+        const searchText = e.target.value.toLowerCase();
+        const filtered = allItems.filter(item => 
+            item.name.toLowerCase().includes(searchText)
+        );
+        displayItems(filtered);
+    });
+</script>
+
+</body>
+</html>
